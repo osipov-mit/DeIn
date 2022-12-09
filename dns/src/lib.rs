@@ -155,10 +155,13 @@ pub unsafe extern "C" fn meta_state() -> *mut [i32; 2] {
     let action: QueryAction = msg::load().expect("Unable to decode message");
 
     let result: QueryResult = match action {
-        QueryAction::GetByName(name) => QueryResult::Records(RECORDS.get_by_name(name)),
-        QueryAction::GetById(id) => QueryResult::Record(RECORDS.get_by_id(id)),
-        QueryAction::GetByCreator(actor) => QueryResult::Records(RECORDS.get_by_creator(actor)),
         QueryAction::GetAll => QueryResult::Records(RECORDS.clone()),
+        QueryAction::GetById(id) => QueryResult::Record(RECORDS.get_by_id(id)),
+        QueryAction::GetByName(name) => QueryResult::Records(RECORDS.get_by_name(name)),
+        QueryAction::GetByCreator(actor) => QueryResult::Records(RECORDS.get_by_creator(actor)),
+        QueryAction::GetByDescription(description) => {
+            QueryResult::Records(RECORDS.get_by_description(description))
+        }
     };
 
     util::to_leak_ptr(result.encode())

@@ -40,10 +40,11 @@ pub enum DnsReply {
 
 #[derive(Encode, Decode, TypeInfo)]
 pub enum QueryAction {
-    GetById(u32),
     GetAll,
+    GetById(u32),
     GetByName(String),
     GetByCreator(ActorId),
+    GetByDescription(String),
 }
 
 #[derive(Encode, Decode, TypeInfo)]
