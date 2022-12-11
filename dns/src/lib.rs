@@ -44,13 +44,9 @@ impl Dns for Vec<DnsRecord> {
     }
 
     fn remove_record(&mut self, id: u32) -> Option<DnsRecord> {
-        let index = self.iter().position(|r| r.id == id);
-
-        if index.is_some() {
-            let record = self.get(index.unwrap()).unwrap();
-
+        if let Some((index, record)) = self.iter().enumerate().find(|(_, r)| r.id == id) {
             if record.created_by == msg::source() {
-                Some(self.swap_remove(index.unwrap()))
+                Some(self.swap_remove(index))
             } else {
                 None
             }
@@ -66,10 +62,7 @@ impl Dns for Vec<DnsRecord> {
         link: Option<String>,
         description: Option<String>,
     ) -> Option<DnsRecord> {
-        let index = self.iter().position(|r| r.id == id);
-
-        if index.is_some() {
-            let record = self.get_mut(index.unwrap()).unwrap();
+        if let Some(record) = self.iter_mut().find(|r| r.id == id) {
             if record.created_by == msg::source() {
                 if name.is_some() {
                     record.name = name.unwrap()
@@ -93,13 +86,7 @@ impl Dns for Vec<DnsRecord> {
     }
 
     fn get_by_id(&self, id: u32) -> Option<DnsRecord> {
-        let record = self.iter().find(|&r| r.id == id);
-
-        if record.is_some() {
-            Some(record.unwrap().clone())
-        } else {
-            None
-        }
+        self.iter().find(|&r| r.id == id).cloned()
     }
 
     fn get_by_name(&self, name: String) -> Vec<DnsRecord> {
