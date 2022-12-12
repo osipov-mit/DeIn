@@ -45,6 +45,7 @@ pub enum QueryAction {
     GetByName(String),
     GetByCreator(ActorId),
     GetByDescription(String),
+    GetByPattern(String),
 }
 
 #[derive(Encode, Decode, TypeInfo)]

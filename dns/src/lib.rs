@@ -25,6 +25,8 @@ pub trait Dns {
     fn get_by_description(&self, description: String) -> Vec<DnsRecord>;
 
     fn get_by_creator(&self, creator: ActorId) -> Vec<DnsRecord>;
+
+    fn get_by_pattern(&self, pattern: String) -> Vec<DnsRecord>;
 }
 
 impl Dns for Vec<DnsRecord> {
@@ -90,22 +92,29 @@ impl Dns for Vec<DnsRecord> {
     }
 
     fn get_by_name(&self, name: String) -> Vec<DnsRecord> {
-        self.into_iter()
-            .filter(|r| r.name == name)
-            .cloned()
-            .collect()
+        self.iter().filter(|r| r.name == name).cloned().collect()
     }
 
     fn get_by_description(&self, description: String) -> Vec<DnsRecord> {
-        self.into_iter()
+        self.iter()
             .filter(|&r| r.description.as_str().contains(description.as_str()))
             .cloned()
             .collect()
     }
 
     fn get_by_creator(&self, creator: ActorId) -> Vec<DnsRecord> {
-        self.into_iter()
+        self.iter()
             .filter(|&r| r.created_by == creator)
+            .cloned()
+            .collect()
+    }
+
+    fn get_by_pattern(&self, pattern: String) -> Vec<DnsRecord> {
+        self.iter()
+            .filter(|&r| {
+                r.name.as_str().contains(pattern.as_str())
+                    || r.description.as_str().contains(pattern.as_str())
+            })
             .cloned()
             .collect()
     }
@@ -149,6 +158,8 @@ pub unsafe extern "C" fn meta_state() -> *mut [i32; 2] {
         QueryAction::GetByDescription(description) => {
             QueryResult::Records(RECORDS.get_by_description(description))
         }
+
+        QueryAction::GetByPattern(pattern) => QueryResult::Records(RECORDS.get_by_pattern(pattern)),
     };
 
     util::to_leak_ptr(result.encode())
