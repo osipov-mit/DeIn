@@ -18,6 +18,11 @@ pub struct DnsMeta {
     pub description: String,
 }
 
+#[derive(Encode, Decode, TypeInfo, Clone)]
+pub enum GetMeta {
+    Meta(Option<DnsMeta>),
+}
+
 #[derive(Encode, Decode, TypeInfo)]
 pub enum DnsAction {
     Register(ActorId),

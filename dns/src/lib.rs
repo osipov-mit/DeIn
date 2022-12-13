@@ -17,45 +17,60 @@ pub trait Dns {
     fn get_by_pattern(&self, pattern: String) -> Vec<DnsRecord>;
 }
 
-async unsafe fn add_record(id: ActorId) -> DnsRecord {
+async unsafe fn add_record(id: ActorId) -> Option<DnsRecord> {
     if RECORDS.iter().find(|&r| r.id == id).is_some() {
         panic!("Program already registered");
     }
 
-    let dns_meta: DnsMeta = msg::send_bytes_for_reply_as(id, b"0x00", 0)
+    let reply: GetMeta = msg::send_bytes_for_reply_as(id, Vec::from([0]), 0)
         .expect("Error in async")
         .await
         .expect("Unable to get reply");
 
-    if RECORDS
-        .iter()
-        .find(|&r| r.meta.name == dns_meta.name)
-        .is_some()
-    {
-        panic!("Domain {} already registered", dns_meta.name);
+    match reply {
+        GetMeta::Meta(meta) => {
+            if let Some(dns_meta) = meta {
+                if RECORDS
+                    .iter()
+                    .find(|&r| r.meta.name == dns_meta.name)
+                    .is_some()
+                {
+                    panic!("Domain {} already registered", dns_meta.name);
+                }
+
+                let record = DnsRecord {
+                    id,
+                    meta: dns_meta,
+                    created_by: msg::source(),
+                };
+
+                RECORDS.push(record.clone());
+                Some(record)
+            } else {
+                None
+            }
+        }
     }
-
-    let record = DnsRecord {
-        id,
-        meta: dns_meta,
-        created_by: msg::source(),
-    };
-
-    RECORDS.push(record.clone());
-
-    record
 }
 
 async unsafe fn update_record(id: ActorId) -> Option<DnsRecord> {
     if let Some(record) = RECORDS.iter_mut().find(|r| r.id == id) {
-        let dns_meta: DnsMeta = msg::send_bytes_for_reply_as(id, b"0x00", 0)
+        let reply: GetMeta = msg::send_bytes_for_reply_as(id, Vec::from([0]), 0)
             .expect("Error in async")
             .await
             .expect("Unable to get reply");
+        let result = match reply {
+            GetMeta::Meta(meta) => {
+                if let Some(dns_meta) = meta {
+                    record.meta = dns_meta;
 
-        record.meta = dns_meta;
-
-        Some(record.clone())
+                    Some(record.clone())
+                } else {
+                    None
+                }
+            }
+        };
+        result
     } else {
         None
     }
@@ -116,7 +131,7 @@ async unsafe fn main() {
 
     unsafe {
         let result: DnsReply = match action {
-            DnsAction::Register(id) => DnsReply::Record(Some(add_record(id).await)),
+            DnsAction::Register(id) => DnsReply::Record(add_record(id).await),
             DnsAction::Remove(id) => DnsReply::Record(remove_record(id)),
             DnsAction::Update(id) => DnsReply::Record(update_record(id).await),
             DnsAction::GetById(id) => DnsReply::Record(RECORDS.get_by_id(id)),
