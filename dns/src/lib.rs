@@ -1,24 +1,12 @@
 #![no_std]
 
 use dns_io::*;
-use gstd::{msg, prelude::*, util, ActorId, Vec};
+use gstd::{async_main, msg, prelude::*, util, ActorId, Vec};
 
 static mut RECORDS: Vec<DnsRecord> = Vec::new();
 
 pub trait Dns {
-    fn add_record(&mut self, name: String, link: String, description: String) -> DnsRecord;
-
-    fn remove_record(&mut self, id: u32) -> Option<DnsRecord>;
-
-    fn update_record(
-        &mut self,
-        id: u32,
-        name: Option<String>,
-        link: Option<String>,
-        description: Option<String>,
-    ) -> Option<DnsRecord>;
-
-    fn get_by_id(&self, id: u32) -> Option<DnsRecord>;
+    fn get_by_id(&self, id: ActorId) -> Option<DnsRecord>;
 
     fn get_by_name(&self, name: String) -> Vec<DnsRecord>;
 
@@ -29,75 +17,77 @@ pub trait Dns {
     fn get_by_pattern(&self, pattern: String) -> Vec<DnsRecord>;
 }
 
+async unsafe fn add_record(id: ActorId) -> DnsRecord {
+    if RECORDS.iter().find(|&r| r.id == id).is_some() {
+        panic!("Program already registered");
+    }
+
+    let dns_meta: DnsMeta = msg::send_bytes_for_reply_as(id, b"0x00", 0)
+        .expect("Error in async")
+        .await
+        .expect("Unable to get reply");
+
+    if RECORDS
+        .iter()
+        .find(|&r| r.meta.name == dns_meta.name)
+        .is_some()
+    {
+        panic!("Domain {} already registered", dns_meta.name);
+    }
+
+    let record = DnsRecord {
+        id,
+        meta: dns_meta,
+        created_by: msg::source(),
+    };
+
+    RECORDS.push(record.clone());
+
+    record
+}
+
+async unsafe fn update_record(id: ActorId) -> Option<DnsRecord> {
+    if let Some(record) = RECORDS.iter_mut().find(|r| r.id == id) {
+        let dns_meta: DnsMeta = msg::send_bytes_for_reply_as(id, b"0x00", 0)
+            .expect("Error in async")
+            .await
+            .expect("Unable to get reply");
+
+        record.meta = dns_meta;
+
+        Some(record.clone())
+    } else {
+        None
+    }
+}
+
+unsafe fn remove_record(id: ActorId) -> Option<DnsRecord> {
+    if let Some((index, record)) = RECORDS.iter().enumerate().find(|(_, r)| r.id == id) {
+        if record.created_by == msg::source() {
+            Some(RECORDS.swap_remove(index))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 impl Dns for Vec<DnsRecord> {
-    fn add_record(&mut self, name: String, link: String, description: String) -> DnsRecord {
-        let id = self.len() as u32;
-        let record = DnsRecord {
-            id,
-            name,
-            link,
-            description,
-            created_by: msg::source(),
-        };
-
-        self.push(record.clone());
-
-        record
-    }
-
-    fn remove_record(&mut self, id: u32) -> Option<DnsRecord> {
-        if let Some((index, record)) = self.iter().enumerate().find(|(_, r)| r.id == id) {
-            if record.created_by == msg::source() {
-                Some(self.swap_remove(index))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    fn update_record(
-        &mut self,
-        id: u32,
-        name: Option<String>,
-        link: Option<String>,
-        description: Option<String>,
-    ) -> Option<DnsRecord> {
-        if let Some(record) = self.iter_mut().find(|r| r.id == id) {
-            if record.created_by == msg::source() {
-                if name.is_some() {
-                    record.name = name.unwrap()
-                }
-
-                if link.is_some() {
-                    record.link = link.unwrap()
-                }
-
-                if description.is_some() {
-                    record.description = description.unwrap()
-                }
-
-                Some(record.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    fn get_by_id(&self, id: u32) -> Option<DnsRecord> {
+    fn get_by_id(&self, id: ActorId) -> Option<DnsRecord> {
         self.iter().find(|&r| r.id == id).cloned()
     }
 
     fn get_by_name(&self, name: String) -> Vec<DnsRecord> {
-        self.iter().filter(|r| r.name == name).cloned().collect()
+        self.iter()
+            .filter(|r| r.meta.name == name)
+            .cloned()
+            .collect()
     }
 
     fn get_by_description(&self, description: String) -> Vec<DnsRecord> {
         self.iter()
-            .filter(|&r| r.description.as_str().contains(description.as_str()))
+            .filter(|&r| r.meta.description.as_str().contains(description.as_str()))
             .cloned()
             .collect()
     }
@@ -112,38 +102,31 @@ impl Dns for Vec<DnsRecord> {
     fn get_by_pattern(&self, pattern: String) -> Vec<DnsRecord> {
         self.iter()
             .filter(|&r| {
-                r.name.as_str().contains(pattern.as_str())
-                    || r.description.as_str().contains(pattern.as_str())
+                r.meta.name.as_str().contains(pattern.as_str())
+                    || r.meta.description.as_str().contains(pattern.as_str())
             })
             .cloned()
             .collect()
     }
 }
 
-#[no_mangle]
-unsafe extern "C" fn handle() {
+#[async_main]
+async unsafe fn main() {
     let action: DnsAction = msg::load().expect("Unable to decode message");
 
-    let result: DnsReply = match action {
-        DnsAction::Register {
-            name,
-            link,
-            description,
-        } => DnsReply::Record(Some(RECORDS.add_record(name, link, description))),
-        DnsAction::Remove(id) => DnsReply::Record(RECORDS.remove_record(id)),
-        DnsAction::Update {
-            id,
-            name,
-            link,
-            description,
-        } => DnsReply::Record(RECORDS.update_record(id, name, link, description)),
-        DnsAction::GetById(id) => DnsReply::Record(RECORDS.get_by_id(id)),
-        DnsAction::GetByName(name) => DnsReply::Records(RECORDS.get_by_name(name)),
-        DnsAction::GetByDescription(description) => {
-            DnsReply::Records(RECORDS.get_by_description(description))
-        }
-    };
-    msg::reply_with_gas(result, 0, 0).expect("Error in sending a reply");
+    unsafe {
+        let result: DnsReply = match action {
+            DnsAction::Register(id) => DnsReply::Record(Some(add_record(id).await)),
+            DnsAction::Remove(id) => DnsReply::Record(remove_record(id)),
+            DnsAction::Update(id) => DnsReply::Record(update_record(id).await),
+            DnsAction::GetById(id) => DnsReply::Record(RECORDS.get_by_id(id)),
+            DnsAction::GetByName(name) => DnsReply::Records(RECORDS.get_by_name(name)),
+            DnsAction::GetByDescription(description) => {
+                DnsReply::Records(RECORDS.get_by_description(description))
+            }
+        };
+        msg::reply_with_gas(result, 0, 0).expect("Error in sending a reply");
+    }
 }
 
 #[no_mangle]
