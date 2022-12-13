@@ -6,28 +6,29 @@ use scale_info::TypeInfo;
 
 #[derive(Encode, Decode, TypeInfo, Clone)]
 pub struct DnsRecord {
-    pub id: u32,
+    pub id: ActorId,
+    pub meta: DnsMeta,
+    pub created_by: ActorId,
+}
+
+#[derive(Encode, Decode, TypeInfo, Clone)]
+pub struct DnsMeta {
     pub name: String,
     pub link: String,
     pub description: String,
-    pub created_by: ActorId,
+}
+
+#[derive(Encode, Decode, TypeInfo, Clone)]
+pub enum GetMeta {
+    Meta(Option<DnsMeta>),
 }
 
 #[derive(Encode, Decode, TypeInfo)]
 pub enum DnsAction {
-    Register {
-        name: String,
-        link: String,
-        description: String,
-    },
-    Remove(u32),
-    Update {
-        id: u32,
-        name: Option<String>,
-        link: Option<String>,
-        description: Option<String>,
-    },
-    GetById(u32),
+    Register(ActorId),
+    Remove(ActorId),
+    Update(ActorId),
+    GetById(ActorId),
     GetByName(String),
     GetByDescription(String),
 }
@@ -41,7 +42,7 @@ pub enum DnsReply {
 #[derive(Encode, Decode, TypeInfo)]
 pub enum QueryAction {
     GetAll,
-    GetById(u32),
+    GetById(ActorId),
     GetByName(String),
     GetByCreator(ActorId),
     GetByDescription(String),
